@@ -476,33 +476,33 @@ elif page == "Sync Banks (Plaid)":
         """)
         
         if st.button("Connect Bank Account"):
-            link_token = create_link_token(plaid_client)
-            if link_token:
-                # In a real implementation, you'd use Plaid Link (JavaScript component)
-                # For this example, we'll simulate with a text input
-                st.warning("⚠️ Plaid Link requires JavaScript integration. For this demo, you'll need to:")
-                st.code(f"""
-                1. Open Plaid Link with this token: {link_token}
-                2. Complete the authentication flow
-                3. Enter the public_token you receive below
-                """)
-                
-                public_token = st.text_input("Enter public_token from Plaid Link:")
-                institution_name = st.text_input("Enter institution name (e.g., Chase, Bank of America):")
-                
-                if st.button("Save Connection") and public_token and institution_name:
-                    access_token = exchange_public_token(plaid_client, public_token)
-                    if access_token:
-                        plaid_tokens['access_tokens'].append({
-                            'access_token': access_token,
-                            'institution_name': institution_name,
-                            'connected_date': datetime.now().strftime('%Y-%m-%d')
-                        })
-                        save_plaid_tokens(plaid_tokens)
-                        st.success(f"✅ Successfully connected {institution_name}!")
-                        st.rerun()
+          link_token = create_link_token(plaid_client)
+          if link_token:
+            st.write("Click the button below to connect your bank:")
+            from plaid_component import plaid_link
+            plaid_link(link_token)
+           
+            st.divider()
+            st.write("After connecting, enter the information below:")
         
-        st.divider()
+            public_token = st.text_input("Public Token (from above):")
+            institution_name = st.text_input("Institution Name (from above):")
+        
+        if st.button("Save Connection") and public_token and institution_name:
+            access_token = exchange_public_token(plaid_client, public_token)
+            if access_token:
+                plaid_tokens['access_tokens'].append({
+                    'access_token': access_token,
+                    'institution_name': institution_name,
+                    'connected_date': datetime.now().strftime('%Y-%m-%d')
+                })
+                save_plaid_tokens(plaid_tokens)
+                st.success(f"✅ Successfully connected {institution_name}!")
+                st.rerun()
+                
+                #public_token = st.text_input("Enter public_token from Plaid Link:")
+                #institution_name = st.text_input("Enter institution name (e.g., Chase, Bank of America):")  
+                #st.divider()
         
         # Sync transactions
         st.subheader("Sync Transactions")
