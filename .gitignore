@@ -1,0 +1,7 @@
+.streamlit/secrets.toml
+*.pyc
+__pycache__/
+transactions.csv
+budgets.json
+categories.json
+plaid_tokens.json
