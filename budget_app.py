@@ -59,7 +59,7 @@ def init_plaid_client():
             return None
             
         configuration = Configuration(
-            host=plaid.Environment.Sandbox if env == "sandbox" else plaid.Environment.Development,
+            host=plaid.Environment.Sandbox if env == "sandbox" else plaid.Environment.Production,
             api_key={
                 'clientId': client_id,
                 'secret': secret,
