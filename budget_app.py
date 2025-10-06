@@ -45,7 +45,7 @@ def init_plaid_client():
             return None
             
         configuration = Configuration(
-            host=plaid.Environment.Sandbox if env == "sandbox" else plaid.Environment.Production,
+            host=plaid.Environment.Sandbox if env == "sandbox" else plaid.Environment.Development,
             api_key={
                 'clientId': client_id,
                 'secret': secret,
@@ -127,6 +127,10 @@ def save_plaid_tokens(tokens_data):
 def create_link_token(client):
     """Create a Plaid Link token"""
     try:
+        # Get the app URL for redirect_uri (required by Plaid)
+        # For Streamlit Cloud, this will be your app's URL
+        redirect_uri = st.secrets.get("REDIRECT_URI", "https://localhost:8501")
+        
         request = LinkTokenCreateRequest(
             products=[Products("transactions")],
             client_name="Family Budget Tracker",
@@ -134,8 +138,7 @@ def create_link_token(client):
             language='en',
             user=LinkTokenCreateRequestUser(
                 client_user_id='user-' + str(hash(datetime.now()))
-            ),
-            redirect_uri=None  # Not needed for web apps
+            )
         )
         response = client.link_token_create(request)
         return response['link_token']
