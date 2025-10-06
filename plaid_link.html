@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+</head>
+<body>
+    <button id="link-button">Connect a bank account</button>
+    <script>
+        const linkButton = document.getElementById('link-button');
+        
+        linkButton.addEventListener('click', async () => {
+            // Get link token from your Streamlit app
+            const linkToken = 'LINK_TOKEN_HERE'; // You'll need to pass this from Streamlit
+            
+            const handler = Plaid.create({
+                token: linkToken,
+                onSuccess: (public_token, metadata) => {
+                    // Send public_token back to your app
+                    console.log('Public Token:', public_token);
+                    console.log('Institution:', metadata.institution.name);
+                },
+                onExit: (err, metadata) => {
+                    if (err != null) {
+                        console.error(err);
+                    }
+                }
+            });
+            
+            handler.open();
+        });
+    </script>
+</body>
+</html>
