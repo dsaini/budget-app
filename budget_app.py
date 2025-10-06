@@ -39,13 +39,22 @@ def init_plaid_client():
         # Get credentials from Streamlit secrets or environment variables
         client_id = st.secrets.get("PLAID_CLIENT_ID", os.getenv("PLAID_CLIENT_ID"))
         secret = st.secrets.get("PLAID_SECRET", os.getenv("PLAID_SECRET"))
-        env = st.secrets.get("PLAID_ENV", os.getenv("PLAID_ENV", "sandbox"))
+        env = st.secrets.get("PLAID_ENV", os.getenv("PLAID_ENV", "production"))
         
         if not client_id or not secret:
             return None
+        
+        # Map environment string to Plaid environment
+        env_mapping = {
+            "sandbox": plaid.Environment.Sandbox,
+            "development": plaid.Environment.Development,
+            "production": plaid.Environment.Production
+        }
+        
+        plaid_env = env_mapping.get(env.lower(), plaid.Environment.Production)
             
         configuration = Configuration(
-            host=plaid.Environment.Sandbox if env == "sandbox" else plaid.Environment.Production,
+            host=plaid_env,
             api_key={
                 'clientId': client_id,
                 'secret': secret,
@@ -449,17 +458,20 @@ elif page == "Sync Banks (Plaid)":
         st.info("""
         **To set up Plaid:**
         1. Sign up at https://plaid.com/
-        2. Get your Client ID and Secret from the dashboard
+        2. Get your Production Client ID and Secret from the dashboard
         3. Add them to your Streamlit secrets:
            - Go to your app settings on Streamlit Cloud
            - Click "Secrets"
            - Add:
              ```
-             PLAID_CLIENT_ID = "your_client_id"
-             PLAID_SECRET = "your_secret"
-             PLAID_ENV = "sandbox"
+             PLAID_CLIENT_ID = "your_production_client_id"
+             PLAID_SECRET = "your_production_secret"
+             PLAID_ENV = "production"
              ```
         4. Save and restart the app
+        
+        **Note:** Production mode requires approval from Plaid and may have costs.
+        See: https://plaid.com/pricing/
         """)
     else:
         # Show connected accounts
@@ -484,12 +496,11 @@ elif page == "Sync Banks (Plaid)":
         st.subheader("Connect New Account")
         
         st.info("""
-        **Sandbox Test Credentials:**
-        - Username: `user_good`
-        - Password: `pass_good`
-        - Institution: Any bank from the list
-        
-        These will give you test transactions to work with.
+        **Production Mode:**
+        - Connect your real bank accounts
+        - Use your actual bank credentials
+        - Transactions will sync from your real accounts
+        - Data is securely encrypted by Plaid
         """)
         
         if st.button("🔗 Connect Bank Account", type="primary"):
@@ -499,18 +510,139 @@ elif page == "Sync Banks (Plaid)":
                 if link_token:
                     st.success("✅ Link token created successfully!")
                     
-                    # Show the link token and instructions
-                    st.write("**Step 1:** Copy this link token:")
-                    st.code(link_token, language=None)
+                    # Embedded Plaid Link
+                    st.write("**Click the button below to connect your bank:**")
                     
-                    st.write("**Step 2:** Go to Plaid Link Tester:")
-                    st.markdown(f"[Open Plaid Link →](https://cdn.plaid.com/link/v2/stable/link-initialize.html?isWebview=false&token={link_token})")
+                    plaid_link_html = f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+                        <style>
+                            body {{
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                                padding: 20px;
+                                background: #f8f9fa;
+                            }}
+                            #link-button {{
+                                background-color: #000000;
+                                color: white;
+                                padding: 14px 28px;
+                                border: none;
+                                border-radius: 6px;
+                                font-size: 16px;
+                                font-weight: 600;
+                                cursor: pointer;
+                                transition: all 0.2s;
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                            }}
+                            #link-button:hover {{
+                                background-color: #333333;
+                                transform: translateY(-1px);
+                                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                            }}
+                            #link-button:active {{
+                                transform: translateY(0);
+                            }}
+                            #result {{
+                                margin-top: 20px;
+                                padding: 16px;
+                                border-radius: 6px;
+                                display: none;
+                            }}
+                            .success {{
+                                background: #d4edda;
+                                border: 1px solid #c3e6cb;
+                                color: #155724;
+                            }}
+                            .error {{
+                                background: #f8d7da;
+                                border: 1px solid #f5c6cb;
+                                color: #721c24;
+                            }}
+                            code {{
+                                background: rgba(0,0,0,0.05);
+                                padding: 2px 6px;
+                                border-radius: 3px;
+                                font-family: monospace;
+                                word-break: break-all;
+                            }}
+                        </style>
+                    </head>
+                    <body>
+                        <button id="link-button">🏦 Open Plaid Link</button>
+                        <div id="result"></div>
+                        
+                        <script>
+                            const linkButton = document.getElementById('link-button');
+                            const resultDiv = document.getElementById('result');
+                            
+                            linkButton.addEventListener('click', async () => {{
+                                linkButton.disabled = true;
+                                linkButton.textContent = 'Opening...';
+                                
+                                try {{
+                                    const handler = Plaid.create({{
+                                        token: '{link_token}',
+                                        onSuccess: (public_token, metadata) => {{
+                                            resultDiv.className = 'success';
+                                            resultDiv.style.display = 'block';
+                                            resultDiv.innerHTML = `
+                                                <strong>✅ Success!</strong><br><br>
+                                                <strong>Public Token:</strong><br>
+                                                <code>${{public_token}}</code><br><br>
+                                                <strong>Institution:</strong> ${{metadata.institution.name}}<br><br>
+                                                <em>Copy the public token above and paste it in the form below (scroll down).</em>
+                                            `;
+                                            linkButton.textContent = '✅ Connected!';
+                                            linkButton.style.backgroundColor = '#28a745';
+                                        }},
+                                        onExit: (err, metadata) => {{
+                                            if (err != null) {{
+                                                resultDiv.className = 'error';
+                                                resultDiv.style.display = 'block';
+                                                resultDiv.innerHTML = `
+                                                    <strong>❌ Error:</strong><br>
+                                                    ${{err.error_message || 'Connection cancelled'}}
+                                                `;
+                                            }} else {{
+                                                resultDiv.style.display = 'block';
+                                                resultDiv.innerHTML = '<em>Connection cancelled by user.</em>';
+                                            }}
+                                            linkButton.disabled = false;
+                                            linkButton.textContent = '🏦 Open Plaid Link';
+                                        }},
+                                        onLoad: () => {{
+                                            linkButton.disabled = false;
+                                            linkButton.textContent = '🏦 Open Plaid Link';
+                                        }}
+                                    }});
+                                    
+                                    handler.open();
+                                }} catch (error) {{
+                                    resultDiv.className = 'error';
+                                    resultDiv.style.display = 'block';
+                                    resultDiv.innerHTML = `<strong>Error:</strong> ${{error.message}}`;
+                                    linkButton.disabled = false;
+                                    linkButton.textContent = '🏦 Open Plaid Link';
+                                }}
+                            }});
+                        </script>
+                    </body>
+                    </html>
+                    """
                     
-                    st.write("**Step 3:** Complete the bank connection, then enter the details below:")
+                    # Display the Plaid Link component
+                    st.components.v1.html(plaid_link_html, height=200, scrolling=True)
+                    
+                    st.divider()
+                    
+                    # Form to save the connection
+                    st.write("**After connecting, enter the information below:**")
                     
                     with st.form("save_connection_form"):
-                        public_token = st.text_input("Public Token (you'll get this after connecting):", help="After completing the Plaid flow, you'll receive a public_token")
-                        institution_name = st.text_input("Institution Name:", placeholder="e.g., Chase, Wells Fargo, etc.")
+                        public_token = st.text_input("Public Token (from above):", help="Copy the public_token that appears after connecting")
+                        institution_name = st.text_input("Institution Name:", placeholder="e.g., Chase, Wells Fargo, Bank of America")
                         
                         submitted = st.form_submit_button("💾 Save Connection")
                         
