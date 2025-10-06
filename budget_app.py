@@ -511,9 +511,41 @@ elif page == "Sync Banks (Plaid)":
                 if link_token:
                     st.success("✅ Link token created successfully!")
                     
-                    # Embedded Plaid Link
-                    st.write("**Click the button below to connect your bank:**")
+                    # Store the link token in session state
+                    st.session_state['plaid_link_token'] = link_token
                     
+                    st.write("**Method 1: Use Plaid's Hosted Link (Recommended)**")
+                    
+                    # Create a direct link to Plaid's OAuth flow
+                    st.markdown(f"""
+                    Click the button below to open Plaid Link in a new tab:
+                    
+                    <a href="https://cdn.plaid.com/link/v2/stable/link-initialize.html?isWebview=false&token={link_token}" target="_blank" style="
+                        display: inline-block;
+                        background-color: #000000;
+                        color: white;
+                        padding: 12px 24px;
+                        text-decoration: none;
+                        border-radius: 6px;
+                        font-weight: 600;
+                        margin: 10px 0;
+                    ">🏦 Open Plaid Link in New Tab</a>
+                    """, unsafe_allow_html=True)
+                    
+                    st.info("""
+                    **Instructions:**
+                    1. Click the button above to open Plaid in a new tab
+                    2. Select your bank and login with your credentials
+                    3. After successfully connecting, you'll see a success message
+                    4. The page will show your **public_token** and **institution name**
+                    5. Copy both and paste them in the form below
+                    """)
+                    
+                    st.divider()
+                    
+                    st.write("**Method 2: Try Embedded Link (May not work in all browsers)**")
+                    
+                    # Simplified embedded version with better iframe handling
                     plaid_link_html = f"""
                     <!DOCTYPE html>
                     <html>
@@ -521,7 +553,7 @@ elif page == "Sync Banks (Plaid)":
                         <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
                         <style>
                             body {{
-                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                                font-family: sans-serif;
                                 padding: 20px;
                                 background: #f8f9fa;
                             }}
@@ -534,20 +566,6 @@ elif page == "Sync Banks (Plaid)":
                                 font-size: 16px;
                                 font-weight: 600;
                                 cursor: pointer;
-                                transition: all 0.2s;
-                                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                            }}
-                            #link-button:hover {{
-                                background-color: #333333;
-                                transform: translateY(-1px);
-                                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                            }}
-                            #link-button:active {{
-                                transform: translateY(0);
-                            }}
-                            #link-button:disabled {{
-                                background-color: #999999;
-                                cursor: not-allowed;
                             }}
                             #result {{
                                 margin-top: 20px;
@@ -557,136 +575,90 @@ elif page == "Sync Banks (Plaid)":
                             }}
                             .success {{
                                 background: #d4edda;
-                                border: 1px solid #c3e6cb;
                                 color: #155724;
                             }}
                             .error {{
                                 background: #f8d7da;
-                                border: 1px solid #f5c6cb;
                                 color: #721c24;
-                            }}
-                            .info {{
-                                background: #d1ecf1;
-                                border: 1px solid #bee5eb;
-                                color: #0c5460;
-                            }}
-                            code {{
-                                background: rgba(0,0,0,0.05);
-                                padding: 2px 6px;
-                                border-radius: 3px;
-                                font-family: monospace;
-                                word-break: break-all;
                             }}
                         </style>
                     </head>
                     <body>
-                        <button id="link-button">🏦 Open Plaid Link</button>
+                        <button id="link-button" onclick="openPlaid()">🏦 Try Embedded Link</button>
                         <div id="result"></div>
                         
                         <script>
-                            const linkButton = document.getElementById('link-button');
-                            const resultDiv = document.getElementById('result');
+                            let handler = null;
                             
-                            // Check if Plaid is loaded
-                            if (typeof Plaid === 'undefined') {{
-                                resultDiv.className = 'error';
-                                resultDiv.style.display = 'block';
-                                resultDiv.innerHTML = '<strong>Error:</strong> Plaid library failed to load. Check your internet connection.';
-                                linkButton.disabled = true;
-                            }}
-                            
-                            linkButton.addEventListener('click', async () => {{
-                                linkButton.disabled = true;
-                                linkButton.textContent = 'Opening...';
+                            function openPlaid() {{
+                                const button = document.getElementById('link-button');
+                                const result = document.getElementById('result');
                                 
-                                resultDiv.className = 'info';
-                                resultDiv.style.display = 'block';
-                                resultDiv.innerHTML = '⏳ Initializing Plaid Link...';
+                                button.disabled = true;
+                                button.textContent = 'Loading...';
                                 
                                 try {{
-                                    console.log('Creating Plaid handler with token:', '{link_token}'.substring(0, 20) + '...');
-                                    
-                                    const handler = Plaid.create({{
-                                        token: '{link_token}',
-                                        onSuccess: (public_token, metadata) => {{
-                                            console.log('Plaid success:', metadata);
-                                            resultDiv.className = 'success';
-                                            resultDiv.style.display = 'block';
-                                            resultDiv.innerHTML = `
-                                                <strong>✅ Success!</strong><br><br>
-                                                <strong>Public Token:</strong><br>
-                                                <code>${{public_token}}</code><br><br>
-                                                <strong>Institution:</strong> ${{metadata.institution.name}}<br>
-                                                <strong>Account ID:</strong> ${{metadata.accounts[0]?.id || 'N/A'}}<br><br>
-                                                <em>Copy the public token above and paste it in the form below (scroll down).</em>
-                                            `;
-                                            linkButton.textContent = '✅ Connected!';
-                                            linkButton.style.backgroundColor = '#28a745';
-                                        }},
-                                        onExit: (err, metadata) => {{
-                                            console.log('Plaid exit:', err, metadata);
-                                            if (err != null) {{
-                                                resultDiv.className = 'error';
-                                                resultDiv.style.display = 'block';
-                                                resultDiv.innerHTML = `
-                                                    <strong>❌ Error:</strong><br>
-                                                    ${{err.display_message || err.error_message || 'Connection failed'}}
+                                    if (!handler) {{
+                                        handler = Plaid.create({{
+                                            token: '{link_token}',
+                                            onSuccess: (public_token, metadata) => {{
+                                                result.className = 'success';
+                                                result.style.display = 'block';
+                                                result.innerHTML = `
+                                                    <strong>✅ Success!</strong><br><br>
+                                                    <strong>Public Token:</strong><br>
+                                                    <textarea readonly style="width:100%; font-size:12px; padding:8px;">${{public_token}}</textarea><br><br>
+                                                    <strong>Institution:</strong> ${{metadata.institution.name}}<br><br>
+                                                    <em>Copy the token above and institution name to the form below.</em>
                                                 `;
-                                            }} else {{
-                                                resultDiv.style.display = 'block';
-                                                resultDiv.className = 'info';
-                                                resultDiv.innerHTML = '<em>Connection cancelled by user.</em>';
+                                                button.textContent = '✅ Connected!';
+                                                button.style.backgroundColor = '#28a745';
+                                            }},
+                                            onExit: (err) => {{
+                                                if (err) {{
+                                                    result.className = 'error';
+                                                    result.style.display = 'block';
+                                                    result.innerHTML = `<strong>Error:</strong> ${{err.display_message || err.error_message}}`;
+                                                }}
+                                                button.disabled = false;
+                                                button.textContent = '🏦 Try Embedded Link';
+                                            }},
+                                            onLoad: () => {{
+                                                button.disabled = false;
+                                                button.textContent = '🏦 Try Embedded Link';
                                             }}
-                                            linkButton.disabled = false;
-                                            linkButton.textContent = '🏦 Open Plaid Link';
-                                        }},
-                                        onLoad: () => {{
-                                            console.log('Plaid loaded successfully');
-                                            resultDiv.style.display = 'none';
-                                            linkButton.disabled = false;
-                                            linkButton.textContent = '🏦 Open Plaid Link';
-                                        }},
-                                        onEvent: (eventName, metadata) => {{
-                                            console.log('Plaid event:', eventName, metadata);
-                                        }}
-                                    }});
-                                    
-                                    console.log('Opening Plaid handler...');
+                                        }});
+                                    }}
                                     handler.open();
                                 }} catch (error) {{
-                                    console.error('Plaid error:', error);
-                                    resultDiv.className = 'error';
-                                    resultDiv.style.display = 'block';
-                                    resultDiv.innerHTML = `
-                                        <strong>Error:</strong> ${{error.message}}<br>
-                                        <small>${{error.stack || ''}}</small>
-                                    `;
-                                    linkButton.disabled = false;
-                                    linkButton.textContent = '🏦 Open Plaid Link';
+                                    result.className = 'error';
+                                    result.style.display = 'block';
+                                    result.innerHTML = `<strong>Error:</strong> ${{error.message}}`;
+                                    button.disabled = false;
+                                    button.textContent = '🏦 Try Embedded Link';
                                 }}
-                            }});
+                            }}
                         </script>
                     </body>
                     </html>
                     """
                     
-                    # Display the Plaid Link component
-                    st.components.v1.html(plaid_link_html, height=250, scrolling=True)
+                    st.components.v1.html(plaid_link_html, height=200, scrolling=True)
                     
                     st.divider()
                     
                     # Form to save the connection
-                    st.write("**After connecting, enter the information below:**")
+                    st.write("**Enter Connection Details:**")
                     
                     with st.form("save_connection_form"):
-                        public_token = st.text_input("Public Token (from above):", help="Copy the public_token that appears after connecting")
+                        public_token = st.text_area("Public Token:", help="Paste the public_token from Plaid", height=100)
                         institution_name = st.text_input("Institution Name:", placeholder="e.g., Chase, Wells Fargo, Bank of America")
                         
                         submitted = st.form_submit_button("💾 Save Connection")
                         
                         if submitted and public_token and institution_name:
                             with st.spinner("Exchanging tokens..."):
-                                access_token = exchange_public_token(plaid_client, public_token)
+                                access_token = exchange_public_token(plaid_client, public_token.strip())
                                 if access_token:
                                     plaid_tokens['access_tokens'].append({
                                         'access_token': access_token,
