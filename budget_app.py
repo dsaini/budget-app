@@ -44,17 +44,18 @@ def init_plaid_client():
         if not client_id or not secret:
             return None
         
-        # Map environment string to Plaid environment
+        # Map environment string to Plaid host URL
+        # Plaid library uses direct URLs instead of Environment enum
         env_mapping = {
-            "sandbox": plaid.Environment.Sandbox,
-            "development": plaid.Environment.Development,
-            "production": plaid.Environment.Production
+            "sandbox": "https://sandbox.plaid.com",
+            "development": "https://development.plaid.com",
+            "production": "https://production.plaid.com"
         }
         
-        plaid_env = env_mapping.get(env.lower(), plaid.Environment.Production)
+        host = env_mapping.get(env.lower(), "https://production.plaid.com")
             
         configuration = Configuration(
-            host=plaid_env,
+            host=host,
             api_key={
                 'clientId': client_id,
                 'secret': secret,
