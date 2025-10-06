@@ -17,20 +17,6 @@ from plaid.configuration import Configuration
 from plaid.api_client import ApiClient
 import plaid
 
-# Password protection
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-
-if not st.session_state.authenticated:
-    password = st.text_input("Enter password:", type="password")
-    if st.button("Login"):
-        if password == st.secrets.get("password", ""):
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("Incorrect password")
-    st.stop()
-    
 # Page config
 st.set_page_config(page_title="Family Budget Tracker", layout="wide")
 
@@ -148,12 +134,19 @@ def create_link_token(client):
             language='en',
             user=LinkTokenCreateRequestUser(
                 client_user_id='user-' + str(hash(datetime.now()))
-            )
+            ),
+            redirect_uri=None  # Not needed for web apps
         )
         response = client.link_token_create(request)
         return response['link_token']
+    except plaid.ApiException as e:
+        error_response = json.loads(e.body)
+        st.error(f"Plaid API Error: {error_response.get('error_message', str(e))}")
+        st.error(f"Error code: {error_response.get('error_code', 'unknown')}")
+        return None
     except Exception as e:
         st.error(f"Error creating link token: {str(e)}")
+        st.error(f"Error type: {type(e).__name__}")
         return None
 
 def exchange_public_token(client, public_token):
@@ -434,16 +427,36 @@ elif page == "Import CSV":
 elif page == "Sync Banks (Plaid)":
     st.title("🏦 Sync Bank & Credit Card Accounts")
     
+    # Debug section
+    with st.expander("🔍 Debug Info - Click to expand"):
+        st.write("**Plaid Configuration:**")
+        st.write(f"- Client configured: {'✅ Yes' if plaid_client else '❌ No'}")
+        if plaid_client:
+            try:
+                client_id = st.secrets.get("PLAID_CLIENT_ID", os.getenv("PLAID_CLIENT_ID", "Not set"))
+                env = st.secrets.get("PLAID_ENV", os.getenv("PLAID_ENV", "Not set"))
+                st.write(f"- Client ID: {client_id[:10]}... (truncated)")
+                st.write(f"- Environment: {env}")
+                st.write(f"- Secret configured: {'✅ Yes' if st.secrets.get('PLAID_SECRET') or os.getenv('PLAID_SECRET') else '❌ No'}")
+            except Exception as e:
+                st.error(f"Error reading config: {e}")
+    
     if not plaid_client:
         st.error("⚠️ Plaid is not configured. Please add your Plaid credentials.")
         st.info("""
         **To set up Plaid:**
         1. Sign up at https://plaid.com/
         2. Get your Client ID and Secret from the dashboard
-        3. Add them to your Streamlit secrets or environment variables:
-           - PLAID_CLIENT_ID
-           - PLAID_SECRET
-           - PLAID_ENV (sandbox, development, or production)
+        3. Add them to your Streamlit secrets:
+           - Go to your app settings on Streamlit Cloud
+           - Click "Secrets"
+           - Add:
+             ```
+             PLAID_CLIENT_ID = "your_client_id"
+             PLAID_SECRET = "your_secret"
+             PLAID_ENV = "sandbox"
+             ```
+        4. Save and restart the app
         """)
     else:
         # Show connected accounts
@@ -468,59 +481,82 @@ elif page == "Sync Banks (Plaid)":
         st.subheader("Connect New Account")
         
         st.info("""
-        **Note:** In sandbox mode, use these test credentials:
+        **Sandbox Test Credentials:**
         - Username: `user_good`
         - Password: `pass_good`
+        - Institution: Any bank from the list
         
-        These will give you test transactions to play with.
+        These will give you test transactions to work with.
         """)
         
-        if st.button("Connect Bank Account"):
-          link_token = create_link_token(plaid_client)
-          if link_token:
-            st.write("Click the button below to connect your bank:")
-            from plaid_component import plaid_link
-            plaid_link(link_token)
-           
-            st.divider()
-            st.write("After connecting, enter the information below:")
-        
-            public_token = st.text_input("Public Token (from above):")
-            institution_name = st.text_input("Institution Name (from above):")
-        
-        if st.button("Save Connection") and public_token and institution_name:
-            access_token = exchange_public_token(plaid_client, public_token)
-            if access_token:
-                plaid_tokens['access_tokens'].append({
-                    'access_token': access_token,
-                    'institution_name': institution_name,
-                    'connected_date': datetime.now().strftime('%Y-%m-%d')
-                })
-                save_plaid_tokens(plaid_tokens)
-                st.success(f"✅ Successfully connected {institution_name}!")
-                st.rerun()
+        if st.button("🔗 Connect Bank Account", type="primary"):
+            with st.spinner("Creating connection link..."):
+                link_token = create_link_token(plaid_client)
                 
-                #public_token = st.text_input("Enter public_token from Plaid Link:")
-                #institution_name = st.text_input("Enter institution name (e.g., Chase, Bank of America):")  
-                #st.divider()
+                if link_token:
+                    st.success("✅ Link token created successfully!")
+                    
+                    # Show the link token and instructions
+                    st.write("**Step 1:** Copy this link token:")
+                    st.code(link_token, language=None)
+                    
+                    st.write("**Step 2:** Go to Plaid Link Tester:")
+                    st.markdown(f"[Open Plaid Link →](https://cdn.plaid.com/link/v2/stable/link-initialize.html?isWebview=false&token={link_token})")
+                    
+                    st.write("**Step 3:** Complete the bank connection, then enter the details below:")
+                    
+                    with st.form("save_connection_form"):
+                        public_token = st.text_input("Public Token (you'll get this after connecting):", help="After completing the Plaid flow, you'll receive a public_token")
+                        institution_name = st.text_input("Institution Name:", placeholder="e.g., Chase, Wells Fargo, etc.")
+                        
+                        submitted = st.form_submit_button("💾 Save Connection")
+                        
+                        if submitted and public_token and institution_name:
+                            with st.spinner("Exchanging tokens..."):
+                                access_token = exchange_public_token(plaid_client, public_token)
+                                if access_token:
+                                    plaid_tokens['access_tokens'].append({
+                                        'access_token': access_token,
+                                        'institution_name': institution_name,
+                                        'connected_date': datetime.now().strftime('%Y-%m-%d')
+                                    })
+                                    save_plaid_tokens(plaid_tokens)
+                                    st.success(f"✅ Successfully connected {institution_name}!")
+                                    st.balloons()
+                                    st.rerun()
+                else:
+                    st.error("❌ Failed to create link token. Check the error messages above.")
+        
+        st.divider()
         
         # Sync transactions
         st.subheader("Sync Transactions")
         st.write("Pull the latest transactions from your connected accounts (last 90 days)")
         
-        if st.button("Sync All Accounts", type="primary", disabled=not plaid_tokens['access_tokens']):
-            with st.spinner("Syncing transactions..."):
-                new_transactions = sync_plaid_transactions(plaid_client, plaid_tokens['access_tokens'])
-                
-                if new_transactions:
-                    new_df = pd.DataFrame(new_transactions)
-                    transactions_df = pd.concat([transactions_df, new_df], ignore_index=True)
-                    transactions_df = transactions_df.drop_duplicates(subset=['transaction_id'])
-                    save_transactions(transactions_df)
-                    st.success(f"✅ Synced {len(new_transactions)} new transactions!")
-                    st.rerun()
-                else:
-                    st.info("No new transactions found.")
+        if plaid_tokens['access_tokens']:
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                if st.button("🔄 Sync All Accounts", type="primary"):
+                    with st.spinner("Syncing transactions..."):
+                        try:
+                            new_transactions = sync_plaid_transactions(plaid_client, plaid_tokens['access_tokens'])
+                            
+                            if new_transactions:
+                                new_df = pd.DataFrame(new_transactions)
+                                transactions_df = pd.concat([transactions_df, new_df], ignore_index=True)
+                                transactions_df = transactions_df.drop_duplicates(subset=['transaction_id'])
+                                save_transactions(transactions_df)
+                                st.success(f"✅ Synced {len(new_transactions)} new transactions!")
+                                st.balloons()
+                                st.rerun()
+                            else:
+                                st.info("No new transactions found.")
+                        except Exception as e:
+                            st.error(f"Error syncing: {str(e)}")
+            with col2:
+                st.caption(f"Last sync: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        else:
+            st.warning("⚠️ No accounts connected yet. Connect a bank account first.")
 
 # MANAGE BUDGET PAGE
 elif page == "Manage Budget":
