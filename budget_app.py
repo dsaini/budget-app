@@ -545,6 +545,10 @@ elif page == "Sync Banks (Plaid)":
                             #link-button:active {{
                                 transform: translateY(0);
                             }}
+                            #link-button:disabled {{
+                                background-color: #999999;
+                                cursor: not-allowed;
+                            }}
                             #result {{
                                 margin-top: 20px;
                                 padding: 16px;
@@ -560,6 +564,11 @@ elif page == "Sync Banks (Plaid)":
                                 background: #f8d7da;
                                 border: 1px solid #f5c6cb;
                                 color: #721c24;
+                            }}
+                            .info {{
+                                background: #d1ecf1;
+                                border: 1px solid #bee5eb;
+                                color: #0c5460;
                             }}
                             code {{
                                 background: rgba(0,0,0,0.05);
@@ -578,52 +587,80 @@ elif page == "Sync Banks (Plaid)":
                             const linkButton = document.getElementById('link-button');
                             const resultDiv = document.getElementById('result');
                             
+                            // Check if Plaid is loaded
+                            if (typeof Plaid === 'undefined') {{
+                                resultDiv.className = 'error';
+                                resultDiv.style.display = 'block';
+                                resultDiv.innerHTML = '<strong>Error:</strong> Plaid library failed to load. Check your internet connection.';
+                                linkButton.disabled = true;
+                            }}
+                            
                             linkButton.addEventListener('click', async () => {{
                                 linkButton.disabled = true;
                                 linkButton.textContent = 'Opening...';
                                 
+                                resultDiv.className = 'info';
+                                resultDiv.style.display = 'block';
+                                resultDiv.innerHTML = '⏳ Initializing Plaid Link...';
+                                
                                 try {{
+                                    console.log('Creating Plaid handler with token:', '{link_token}'.substring(0, 20) + '...');
+                                    
                                     const handler = Plaid.create({{
                                         token: '{link_token}',
                                         onSuccess: (public_token, metadata) => {{
+                                            console.log('Plaid success:', metadata);
                                             resultDiv.className = 'success';
                                             resultDiv.style.display = 'block';
                                             resultDiv.innerHTML = `
                                                 <strong>✅ Success!</strong><br><br>
                                                 <strong>Public Token:</strong><br>
                                                 <code>${{public_token}}</code><br><br>
-                                                <strong>Institution:</strong> ${{metadata.institution.name}}<br><br>
+                                                <strong>Institution:</strong> ${{metadata.institution.name}}<br>
+                                                <strong>Account ID:</strong> ${{metadata.accounts[0]?.id || 'N/A'}}<br><br>
                                                 <em>Copy the public token above and paste it in the form below (scroll down).</em>
                                             `;
                                             linkButton.textContent = '✅ Connected!';
                                             linkButton.style.backgroundColor = '#28a745';
                                         }},
                                         onExit: (err, metadata) => {{
+                                            console.log('Plaid exit:', err, metadata);
                                             if (err != null) {{
                                                 resultDiv.className = 'error';
                                                 resultDiv.style.display = 'block';
                                                 resultDiv.innerHTML = `
                                                     <strong>❌ Error:</strong><br>
-                                                    ${{err.error_message || 'Connection cancelled'}}
+                                                    ${{err.display_message || err.error_message || 'Connection failed'}}
                                                 `;
                                             }} else {{
                                                 resultDiv.style.display = 'block';
+                                                resultDiv.className = 'info';
                                                 resultDiv.innerHTML = '<em>Connection cancelled by user.</em>';
                                             }}
                                             linkButton.disabled = false;
                                             linkButton.textContent = '🏦 Open Plaid Link';
                                         }},
                                         onLoad: () => {{
+                                            console.log('Plaid loaded successfully');
+                                            resultDiv.style.display = 'none';
                                             linkButton.disabled = false;
                                             linkButton.textContent = '🏦 Open Plaid Link';
+                                        }},
+                                        onEvent: (eventName, metadata) => {{
+                                            console.log('Plaid event:', eventName, metadata);
                                         }}
                                     }});
                                     
+                                    console.log('Opening Plaid handler...');
                                     handler.open();
                                 }} catch (error) {{
+                                    console.error('Plaid error:', error);
                                     resultDiv.className = 'error';
                                     resultDiv.style.display = 'block';
-                                    resultDiv.innerHTML = `<strong>Error:</strong> ${{error.message}}`;
+                                    resultDiv.innerHTML = `
+                                        <strong>Error:</strong> ${{error.message}}<br>
+                                        <small>${{error.stack || ''}}</small>
+                                    `;
                                     linkButton.disabled = false;
                                     linkButton.textContent = '🏦 Open Plaid Link';
                                 }}
@@ -634,7 +671,7 @@ elif page == "Sync Banks (Plaid)":
                     """
                     
                     # Display the Plaid Link component
-                    st.components.v1.html(plaid_link_html, height=200, scrolling=True)
+                    st.components.v1.html(plaid_link_html, height=250, scrolling=True)
                     
                     st.divider()
                     
