@@ -17,6 +17,20 @@ from plaid.configuration import Configuration
 from plaid.api_client import ApiClient
 import plaid
 
+# Password protection
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    password = st.text_input("Enter password:", type="password")
+    if st.button("Login"):
+        if password == st.secrets.get("password", ""):
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password")
+    st.stop()
+    
 # Page config
 st.set_page_config(page_title="Family Budget Tracker", layout="wide")
 
